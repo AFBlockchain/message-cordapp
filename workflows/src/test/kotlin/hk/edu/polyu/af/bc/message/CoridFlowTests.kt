@@ -10,12 +10,14 @@ import net.corda.testing.node.MockNetwork
 import net.corda.testing.node.MockNetworkParameters
 import net.corda.testing.node.StartedMockNode
 import net.corda.testing.node.TestCordapp
-import org.junit.After
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CoridFlowTests {
     companion object {
         val logger: Logger = LoggerFactory.getLogger(CoridFlowTests::class.java)
@@ -25,7 +27,7 @@ class CoridFlowTests {
     private lateinit var a: StartedMockNode
     private lateinit var b: StartedMockNode
 
-    @Before
+    @BeforeAll
     fun setup() {
         network = MockNetwork(
             MockNetworkParameters(cordappsForAllNodes = listOf(
@@ -52,7 +54,7 @@ class CoridFlowTests {
         b.startFlow(CreateUser("bob")).getOrThrow(network)
     }
 
-    @After
+    @AfterAll
     fun tearDown() {
         network.stopNodes()
     }

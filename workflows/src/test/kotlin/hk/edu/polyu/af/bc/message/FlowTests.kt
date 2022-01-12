@@ -1,8 +1,5 @@
 package hk.edu.polyu.af.bc.message
 
-import com.r3.corda.lib.accounts.workflows.flows.CreateAccount
-import com.r3.corda.lib.accounts.workflows.flows.RequestKeyForAccount
-import com.r3.corda.lib.accounts.workflows.flows.ShareAccountInfo
 import hk.edu.polyu.af.bc.message.flows.SendMessage
 import hk.edu.polyu.af.bc.message.states.MessageState
 import net.corda.core.identity.AnonymousParty
@@ -10,13 +7,14 @@ import net.corda.testing.node.MockNetwork
 import net.corda.testing.node.MockNetworkParameters
 import net.corda.testing.node.StartedMockNode
 import net.corda.testing.node.TestCordapp
-import org.junit.After
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterAll
+import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 
-
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FlowTests {
     companion object {
         val logger: Logger = LoggerFactory.getLogger(FlowTests::class.java)
@@ -28,7 +26,7 @@ class FlowTests {
 
     private val parties: MutableMap<String, AnonymousParty> = mutableMapOf()
 
-    @Before
+    @BeforeAll
     fun setup() {
         network = MockNetwork(MockNetworkParameters(cordappsForAllNodes = listOf(
                 TestCordapp.findCordapp("hk.edu.polyu.af.bc.message.contracts"),
@@ -47,7 +45,7 @@ class FlowTests {
         parties["b2"] = network.createAndShareAccount(b, a, "b2")
     }
 
-    @After
+    @AfterAll
     fun tearDown() {
         network.stopNodes()
     }

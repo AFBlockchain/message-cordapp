@@ -40,7 +40,6 @@ configurations {
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     testCompile "org.jetbrains.kotlin:kotlin-test:$kotlin_version"
-    testCompile "junit:junit:$junit_version"
 
     // Corda dependencies.
     cordaCompile "$corda_core_release_group:corda-core:$corda_core_release_version"
@@ -52,14 +51,15 @@ dependencies {
     cordapp files("$rootProject.projectDir/libs/corid-contracts-0.1.0.jar")
     cordapp files("$rootProject.projectDir/libs/corid-workflows-0.1.0.jar")
 
-
-    testImplementation "$accounts_release_group:accounts-contracts:$accounts_release_version"
-    testImplementation "$confidential_id_release_group:ci-workflows:$confidential_id_release_version"
-    testImplementation "$accounts_release_group:accounts-workflows:$accounts_release_version"
-
+    testCompile "$accounts_release_group:accounts-contracts:$accounts_release_version"
+    testCompile "$confidential_id_release_group:ci-workflows:$confidential_id_release_version"
+    testCompile "$accounts_release_group:accounts-workflows:$accounts_release_version"
+    testCompile 'com.github.manosbatsis.corda.testacles:corda-testacles-nodedriver:0.24'
+    testCompile 'org.junit.jupiter:junit-jupiter:5.8.2'
 }
 
 task integrationTest(type: Test, dependsOn: []) {
+    useJUnitPlatform()
     testClassesDirs = sourceSets.integrationTest.output.classesDirs
     classpath = sourceSets.integrationTest.runtimeClasspath
 }

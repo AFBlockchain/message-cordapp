@@ -1,47 +1,105 @@
-package hk.edu.polyu.af.bc.message
+import com.github.manosbatsis.corda.testacles.nodedriver.NodeHandles
+import com.github.manosbatsis.corda.testacles.nodedriver.config.NodeDriverNodesConfig
+import com.github.manosbatsis.corda.testacles.nodedriver.jupiter.NodeDriverExtensionConfig
+import com.github.manosbatsis.corda.testacles.nodedriver.jupiter.NodeDriverNetworkExtension
+import hk.edu.polyu.af.bc.account.flows.plane.CreateNetworkIdentityPlane
+import hk.edu.polyu.af.bc.account.flows.plane.GetCurrentNetworkIdentityPlane
+import hk.edu.polyu.af.bc.account.flows.plane.SetCurrentNetworkIdentityPlaneByName
+import hk.edu.polyu.af.bc.account.flows.user.CreateUser
+import hk.edu.polyu.af.bc.account.flows.user.GetUserStates
+import hk.edu.polyu.af.bc.account.flows.user.IsUserExists
+import hk.edu.polyu.af.bc.message.*
+import hk.edu.polyu.af.bc.message.flows.SendMessageUser
+import hk.edu.polyu.af.bc.message.states.MessageState
+import net.corda.core.messaging.CordaRPCOps
+import org.junit.jupiter.api.*
+import org.junit.jupiter.api.extension.ExtendWith
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
-import net.corda.core.identity.CordaX500Name
-import net.corda.core.utilities.getOrThrow
-import net.corda.testing.core.TestIdentity
-import net.corda.testing.driver.DriverDSL
-import net.corda.testing.driver.DriverParameters
-import net.corda.testing.driver.NodeHandle
-import net.corda.testing.driver.driver
-import org.junit.Test
-import java.util.concurrent.Future
-import kotlin.test.assertEquals
-
+@ExtendWith(NodeDriverNetworkExtension::class)
+@TestMethodOrder(MethodOrderer.OrderAnnotation::class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class DriverBasedTest {
-    private val bankA = TestIdentity(CordaX500Name("BankA", "", "GB"))
-    private val bankB = TestIdentity(CordaX500Name("BankB", "", "US"))
+    companion object {
+        val logger: Logger = LoggerFactory.getLogger(DriverBasedTest::class.java)
 
-    @Test
-    fun test() = withDriver {
-        // Start a pair of nodes and wait for them both to be ready.
-        val (partyAHandle, partyBHandle) = startNodes(bankA, bankB)
-
-        // From each node, make an RPC call to retrieve another node's name from the network map, to verify that the
-        // nodes have started and can communicate.
-
-        // This is a very basic test: in practice tests would be starting flows, and verifying the states in the vault
-        // and other important metrics to ensure that your CorDapp is working as intended.
-        assertEquals(bankB.name, partyAHandle.resolveName(bankB.name))
-        assertEquals(bankA.name, partyBHandle.resolveName(bankA.name))
+        @NodeDriverExtensionConfig
+        @JvmStatic
+        val nodeDriverConfig: NodeDriverNodesConfig = customNodeDriverConfig
     }
 
-    // Runs a test inside the Driver DSL, which provides useful functions for starting nodes, etc.
-    private fun withDriver(test: DriverDSL.() -> Unit) = driver(
-        DriverParameters(isDebug = true, startNodesInProcess = true)
-    ) { test() }
+    lateinit var proxyA: CordaRPCOps
+    lateinit var proxyB: CordaRPCOps
 
-    // Makes an RPC call to retrieve another node's name from the network map.
-    private fun NodeHandle.resolveName(name: CordaX500Name) = rpc.wellKnownPartyFromX500Name(name)!!.name
+    @Test
+    @Order(1)
+    fun setUp(nodeHandles: NodeHandles) {
+        proxyA = nodeHandles.getNode("partyA").rpc
+        proxyB = nodeHandles.getNode("partyB").rpc
+    }
 
-    // Resolves a list of futures to a list of the promised values.
-    private fun <T> List<Future<T>>.waitForAll(): List<T> = map { it.getOrThrow() }
+    @Test
+    @Order(2)
+    fun createAndSetPlanes() {
+        proxyA.startFlowDynamic(CreateNetworkIdentityPlane::class.java,"message-plane", listOf(proxyB.party())).returnValue.get()
 
-    // Starts multiple nodes simultaneously, then waits for them all to be ready.
-    private fun DriverDSL.startNodes(vararg identities: TestIdentity) = identities
-        .map { startNode(providedName = it.name) }
-        .waitForAll()
+        proxyA.startFlowDynamic(SetCurrentNetworkIdentityPlaneByName::class.java, "message-plane")
+        proxyB.startFlowDynamic(SetCurrentNetworkIdentityPlaneByName::class.java, "message-plane")
+
+        assert(proxyA.startFlowDynamic(GetCurrentNetworkIdentityPlane::class.java).returnValue.get()!!.name == "message-plane")
+        assert(proxyB.startFlowDynamic(GetCurrentNetworkIdentityPlane::class.java).returnValue.get()!!.name == "message-plane")
+    }
+
+    @Test
+    @Order(3)
+    fun createUsers() {
+        proxyA.startFlowDynamic(CreateUser::class.java, "alice1").returnValue.get()
+        proxyA.startFlowDynamic(CreateUser::class.java, "alice2").returnValue.get()
+        proxyB.startFlowDynamic(CreateUser::class.java, "bob1").returnValue.get()
+        proxyB.startFlowDynamic(CreateUser::class.java, "bob2").returnValue.get()
+
+        listOf(proxyA, proxyB).forEach {
+            assertTrue(it.startFlowDynamic(IsUserExists::class.java, "alice1").returnValue.get())
+            assertTrue(it.startFlowDynamic(IsUserExists::class.java, "alice2").returnValue.get())
+            assertTrue(it.startFlowDynamic(IsUserExists::class.java, "bob1").returnValue.get())
+            assertTrue(it.startFlowDynamic(IsUserExists::class.java, "bob2").returnValue.get())
+
+            assertFalse(it.startFlowDynamic(IsUserExists::class.java, "no-such-user").returnValue.get())
+        }
+    }
+
+    @Test
+    @Order(4)
+    fun sendMessageOnSameNode() {
+        val tx = proxyA.startFlowDynamic(SendMessageUser::class.java, "alice1", "alice2", "message1").returnValue.get()
+        val messageState = tx.output(MessageState::class.java)
+
+        proxyA.assertHaveState(messageState, messageComparator)
+    }
+
+    @Test
+    @Order(4)
+    fun sendMessageOnDifferentNodes() {
+        val tx = proxyA.startFlowDynamic(SendMessageUser::class.java, "alice1" ,"bob1", "message2").returnValue.get()
+        val messageState = tx.output(MessageState::class.java)
+
+        proxyA.assertHaveState(messageState, messageComparator)
+        proxyB.assertHaveState(messageState, messageComparator)
+    }
+
+    @Test
+    @Order(5)
+    fun userVaultQueries() {
+        // "alice1" should have message1 & message2
+        // "alice2" should have message1
+        // "bob1" should have message2
+
+        proxyA.startFlowDynamic(GetUserStates::class.java, "alice1", MessageState::class.java).returnValue.get().map { it.state.data as MessageState }.any { it.msg == "message1" }
+        proxyA.startFlowDynamic(GetUserStates::class.java, "alice1", MessageState::class.java).returnValue.get().map { it.state.data as MessageState }.any { it.msg == "message2" }
+        proxyA.startFlowDynamic(GetUserStates::class.java, "alice2", MessageState::class.java).returnValue.get().map { it.state.data as MessageState }.any { it.msg == "message1" }
+        proxyB.startFlowDynamic(GetUserStates::class.java, "bob1", MessageState::class.java).returnValue.get().map { it.state.data as MessageState }.any { it.msg == "message2" }
+    }
 }
