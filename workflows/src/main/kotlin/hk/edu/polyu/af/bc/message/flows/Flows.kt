@@ -34,7 +34,7 @@ class SendMessage(private val sender: AbstractParty,
         val sessions = listOf(initiateFlow(receiverHost))
         val stx = subFlow(CollectSignaturesFlow(ptx, sessions, myOptionalKeys = listOf(sender.owningKey)))  // let the counter-party recognize us
 
-        return subFlow(FinalityFlow(stx, sessions))
+        return subFlow(FinalityFlow(stx, sessions.filterNot { ourIdentity == it.counterparty })) // do not send a finality flow to ourself
     }
 }
 
@@ -47,8 +47,13 @@ class ReceiveMessage(val counterpartySession: FlowSession) : FlowLogic<SignedTra
                //Addition checks
             }
         }
-        val txId = subFlow(signTransactionFlow).id
-        return subFlow(ReceiveFinalityFlow(counterpartySession, expectedTxId = txId))
+        val tx = subFlow(signTransactionFlow)
+
+        // return directly if the initiating flow is on the same node, as the finality flow will not be initiated again
+        // without the following code:
+        // net.corda.core.flows.UnexpectedFlowEndException: Received session end message instead of a data session message. Mismatched send and receive?
+        if (ourIdentity == counterpartySession.counterparty) return tx
+        return subFlow(ReceiveFinalityFlow(counterpartySession, expectedTxId = tx.id))
     }
 }
 

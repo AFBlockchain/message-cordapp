@@ -49,10 +49,14 @@ dependencies {
 
     // CorDapp dependencies.
     cordapp project(":contracts")
+    cordapp files("$rootProject.projectDir/libs/corid-contracts-0.1.0.jar")
+    cordapp files("$rootProject.projectDir/libs/corid-workflows-0.1.0.jar")
+
 
     testImplementation "$accounts_release_group:accounts-contracts:$accounts_release_version"
     testImplementation "$confidential_id_release_group:ci-workflows:$confidential_id_release_version"
     testImplementation "$accounts_release_group:accounts-workflows:$accounts_release_version"
+
 }
 
 task integrationTest(type: Test, dependsOn: []) {
